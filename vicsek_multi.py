@@ -189,5 +189,3 @@ if __name__ == "__main__":
         eta=noise_level,
         steps_per_frame=4
     )
-
-# %%
