@@ -15,15 +15,15 @@
     - $W_{ij}$: j-type 입자에서 i-type 입자로의 상호작용 강도 가중치.
 
 - **상태 변수:**
-    - $**x**_{ni}(t)$: 시간 $t$에서 i-type의 $n$번째 입자 위치.
+    - $x_{ni}(t)$: 시간 $t$에서 i-type의 $n$번째 입자 위치.
     - $\theta_{ni}(t)$: 시간 $t$에서 i-type의 $n$번째 입자 속도 벡터의 각도.
-    - $**v**_{ni}(t) = (\cos \theta_{ni}(t), \sin \theta_{ni}(t))$: 속도 벡터 (정규화됨).
+    - $v_{ni}(t) = (\cos \theta_{ni}(t), \sin \theta_{ni}(t))$: 속도 벡터 (정규화됨).
 
 - **업데이트 규칙:**
     1.  **각도 업데이트:** 다음 시간 단계 $t+1$에서 i-type의 $n$번째 입자의 각도는 반경 $R$ 내 이웃 입자들의 평균 각도(상호작용 행렬 $W$로 가중됨)에 무작위 노이즈 항을 더하여 결정됩니다.
         - 이웃 방향의 가중 합 계산:
-          $$ S_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \sin(\theta_{mj}(t)) \cdot I(|**x**_{mj}(t) - **x**_{ni}(t)| \le R) $$
-          $$ C_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \cos(\theta_{mj}(t)) \cdot I(|**x**_{mj}(t) - **x**_{ni}(t)| \le R) $$
+          $$ S_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \sin(\theta_{mj}(t)) \cdot I(|x_{mj}(t) - x_{ni}(t)| \le R) $$
+          $$ C_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \cos(\theta_{mj}(t)) \cdot I(|x_{mj}(t) - x_{ni}(t)| \le R) $$
           
         - $ \langle \theta_{ni}(t) \rangle = \operatorname{atan2}(S_{ni}, C_{ni}) $
           
@@ -31,7 +31,7 @@
           $$ \theta_{ni}(t+1) = \langle \theta_{ni}(t) \rangle + \Delta \theta_t $$
           여기서 $\Delta \theta_t$는 $[-\eta, \eta]$ 범위의 균일 분포 난수입니다.
     2.  **위치 업데이트:** 입자는 새로운 각도 방향으로 일정한 속력 $v$로 이동합니다.
-        $$ **x**_{ni}(t+1) = (**x**_{ni}(t) + v **v**_{ni}(t+1)) \pmod{L} $$
+        $$ x_{ni}(t+1) = (x_{ni}(t) + v_{ni}(t+1)) \pmod{L} $$
         모듈로 연산은 주기적 경계 조건을 보장합니다.
 
 - **Order Parameter:** 
