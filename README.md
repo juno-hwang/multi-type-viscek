@@ -1,4 +1,4 @@
-# Multi-type Vicsek Model Simulation
+# Multi-type Vicsek Model Simulation [(웹에서 실행)](https://juno-hwang.github.io/multi-type-viscek/simulate.html)
 
 이 프로젝트는 Python (Taichi) 및 WebGL 시각화를 사용하여 여러 입자 유형을 갖는 Vicsek 모델을 시뮬레이션합니다.
 
@@ -21,13 +21,15 @@
 
 - **업데이트 규칙:**
     1.  **각도 업데이트:** 다음 시간 단계 $t+1$에서 i-type의 $n$번째 입자의 각도는 반경 $R$ 내 이웃 입자들의 평균 각도(상호작용 행렬 $W$로 가중됨)에 무작위 노이즈 항을 더하여 결정됩니다.
-        - $ S_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \sin(\theta_{mj}(t)) \cdot I(x_{mj}(t) - x_{ni}(t) \le R) $
-        - $ C_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \cos(\theta_{mj}(t)) \cdot I(x_{mj}(t) - x_{ni}(t) \le R) $
+        - $ S_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \sin(\theta_{mj}(t)) \cdot I(|x_{mj}(t) - x_{ni}(t)| \le R) $
+        - $ C_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \cos(\theta_{mj}(t)) \cdot I(|x_{mj}(t) - x_{ni}(t)| \le R) $
           
         - $ \langle \theta_{ni}(t) \rangle = \operatorname{atan2}(S_{ni}, C_{ni}) $
           
         - 노이즈 추가:
+
           $$ \theta_{ni}(t+1) = \langle \theta_{ni}(t) \rangle + \Delta \theta_t $$
+
           여기서 $\Delta \theta_t$는 $[-\eta, \eta]$ 범위의 균일 분포 난수입니다.
     2.  **위치 업데이트:** 입자는 새로운 각도 방향으로 일정한 속력 $v$로 이동합니다.
         $$ x_{ni}(t+1) = (x_{ni}(t) + v_{ni}(t+1)) \pmod{L} $$
@@ -36,7 +38,7 @@
 - **Order Parameter:** 
     $ \phi_i = \frac{1}{N_i} \left| \sum_{n=1}^{N_i} e^{i \theta_{ni}} \right| $
 
-## WebGL 시뮬레이션 (`simulate.html`)
+## WebGL 시뮬레이션 (`simulate.html`) [웹 브라우저에서 실행하기](https://juno-hwang.github.io/multi-type-viscek/simulate.html)
 
 `simulate.html`은 다중 유형 Vicsek 모델의 상호작용 가능한 브라우저 기반 시각화를 제공합니다. JavaScript와 WebGL 렌더링을 사용하여 동일한 핵심 로직을 구현하며, Python이나 Taichi 없이도 실시간 매개변수 조정 및 시각화가 가능합니다.
 
