@@ -29,11 +29,21 @@ class VicsekModelMultiType:
         self.L = L
         self.W = ti.Matrix.field(self.M, self.M, dtype=ti.f32, shape=())
 
+        # Spatial hashing parameters
+        self.R = R # Global R
+        self.cell_size = self.R
+        self.grid_dim = int(math.ceil(self.L / self.cell_size))
+        self.grid_size = self.grid_dim * self.grid_dim
+
         self.pos = ti.Vector.field(2, dtype=ti.f32, shape=self.N)
         self.angle = ti.field(dtype=ti.f32, shape=self.N)
         self.particle_type = ti.field(dtype=ti.i32, shape=self.N)
-        self.avg_angle_sin = ti.field(dtype=ti.f32, shape=self.N)
-        self.avg_angle_cos = ti.field(dtype=ti.f32, shape=self.N)
+        self.sum_w_sin = ti.field(dtype=ti.f32, shape=self.N)
+        self.sum_w_cos = ti.field(dtype=ti.f32, shape=self.N)
+
+        # Spatial hashing grid fields
+        self.grid_head = ti.field(dtype=ti.i32, shape=self.grid_size)
+        self.grid_next = ti.field(dtype=ti.i32, shape=self.N)
 
         self.Ns_field = ti.field(dtype=ti.i32, shape=self.M)
         self.Ns_py = Ns_list
@@ -57,46 +67,88 @@ class VicsekModelMultiType:
             current_N += num_particles_of_type
 
     @ti.kernel
-    def step(self, current_eta_arg: ti.f32):
-        for i in self.avg_angle_sin:
-            self.avg_angle_sin[i] = 0.0
-            self.avg_angle_cos[i] = 0.0
+    def _clear_grid_and_sums(self):
+        for i in self.sum_w_sin:
+            self.sum_w_sin[i] = 0.0
+            self.sum_w_cos[i] = 0.0
+        for h in self.grid_head:
+            self.grid_head[h] = -1
+
+    @ti.kernel
+    def _build_spatial_hash(self):
+        cell_size = ti.static(self.cell_size)
+        grid_dim = ti.static(self.grid_dim)
 
         for i in range(self.N):
+            cx = int(self.pos[i][0] / cell_size) % grid_dim
+            cy = int(self.pos[i][1] / cell_size) % grid_dim
+            h = cx * grid_dim + cy
+
+            self.grid_next[i] = self.grid_head[h]
+            self.grid_head[h] = i
+
+    @ti.kernel
+    def _compute_and_move(self, current_eta_arg: ti.f32):
+        R2 = ti.static(self.R * self.R)
+        L = ti.static(self.L)
+        cell_size = ti.static(self.cell_size)
+        grid_dim = ti.static(self.grid_dim)
+
+        for i in range(self.N):
+            # Find neighbors using spatial hash
+            cx = int(self.pos[i][0] / cell_size)
+            cy = int(self.pos[i][1] / cell_size)
             type_i = self.particle_type[i]
-            sum_w_sin = 0.0
-            sum_w_cos = 0.0
-            for j in range(self.N):
-                dist_vec = self.pos[j] - self.pos[i]
-                for k in ti.static(range(2)):
-                    if dist_vec[k] > self.L / 2:
-                        dist_vec[k] -= self.L
-                    elif dist_vec[k] < -self.L / 2:
-                        dist_vec[k] += self.L
-                dist_sq = dist_vec.dot(dist_vec)
 
-                if dist_sq <= R * R:
-                    type_j = self.particle_type[j]
-                    interaction_strength = self.W[None][type_i, type_j]
-                    sum_w_sin += interaction_strength * ti.sin(self.angle[j])
-                    sum_w_cos += interaction_strength * ti.cos(self.angle[j])
+            for dx in ti.static(range(-1, 2)):
+                for dy in ti.static(range(-1, 2)):
+                    ncx = (cx + dx + grid_dim) % grid_dim
+                    ncy = (cy + dy + grid_dim) % grid_dim
+                    h = ncx * grid_dim + ncy
 
-            if sum_w_sin != 0.0 or sum_w_cos != 0.0:
-                 avg_angle = ti.atan2(sum_w_sin, sum_w_cos)
-                 noise = (ti.random() - 0.5) * 2 * current_eta_arg
-                 self.angle[i] = avg_angle + noise
+                    j = self.grid_head[h]
+                    while j != -1:
+                        dist_vec = self.pos[j] - self.pos[i]
+                        # Periodic boundary condition
+                        for k in ti.static(range(2)):
+                            if dist_vec[k] > L / 2:
+                                dist_vec[k] -= L
+                            elif dist_vec[k] < -L / 2:
+                                dist_vec[k] += L
+
+                        if dist_vec.dot(dist_vec) <= R2:
+                            type_j = self.particle_type[j]
+                            interaction_strength = self.W[None][type_i, type_j]
+                            self.sum_w_sin[i] += interaction_strength * ti.sin(self.angle[j])
+                            self.sum_w_cos[i] += interaction_strength * ti.cos(self.angle[j])
+                        j = self.grid_next[j]
+
+            # Update angle
+            current_sum_w_sin = self.sum_w_sin[i]
+            current_sum_w_cos = self.sum_w_cos[i]
+            if current_sum_w_sin != 0.0 or current_sum_w_cos != 0.0:
+                avg_angle = ti.atan2(current_sum_w_sin, current_sum_w_cos)
+                noise = (ti.random() - 0.5) * 2 * current_eta_arg
+                self.angle[i] = avg_angle + noise
             else:
                  noise = (ti.random() - 0.5) * 2 * current_eta_arg
                  self.angle[i] += noise
 
+            # Update position
             vel = ti.Vector([ti.cos(self.angle[i]), ti.sin(self.angle[i])]) * v
             self.pos[i] += vel
 
+            # Apply periodic boundary conditions to position
             for k in ti.static(range(2)):
                 if self.pos[i][k] < 0:
-                    self.pos[i][k] += self.L
-                elif self.pos[i][k] >= self.L:
-                    self.pos[i][k] -= self.L
+                    self.pos[i][k] += L
+                elif self.pos[i][k] >= L:
+                    self.pos[i][k] -= L
+
+    def step(self, current_eta_arg: ti.f32):
+        self._clear_grid_and_sums()
+        self._build_spatial_hash()
+        self._compute_and_move(current_eta_arg)
 
     @ti.kernel
     def calculate_order_parameter(self):
@@ -124,7 +176,7 @@ class VicsekModelMultiType:
                 positions_np[i, k] = self.pos[i][k] / self.L
             types_np[i] = self.particle_type[i]
 
-def simulate_multiple(
+def simulate(
     Ns=[500, 500],
     W=np.array([[1.0, 0.5], [0.5, 1.0]], dtype=np.float32),
     L=10.0,
@@ -178,12 +230,12 @@ def simulate_multiple(
 if __name__ == "__main__":
     particle_counts_per_type = [1000, 1000]
     interaction_matrix = np.array([
-        [1, -1],
+        [1, 1],
         [-1, 1]
     ], dtype=np.float32)
     noise_level = 0.5
 
-    simulate_multiple(
+    simulate(
         Ns=particle_counts_per_type,
         W=interaction_matrix,
         eta=noise_level,
