@@ -54,7 +54,7 @@
     ```
 2.  `if __name__ == "__main__":` 블록 내의 매개변수 수정:
     - `particle_counts_per_type` (`Ns`): 각 유형별 입자 수를 포함하는 리스트 (예: `[1000, 500]`)
-    - `interaction_matrix` (`W`): $W_{ij}$ 행렬을 나타내는 NumPy 배열. 코드는 내부적으로 `W.T`를 사용하므로, $W_{ij}$가 유형 `j`에서 유형 `i`로의 영향을 나타내는 것을 기준으로 행렬을 정의해야 합니다.
+    - `interaction_matrix` (`W`): $W_{ij}$ 행렬을 나타내는 NumPy 배열.
     - `noise_level` (`eta`): 노이즈 진폭 $\eta$.
     - `L`, `v`, `R`, `warm_up_steps`, `steps_per_frame`과 같은 다른 매개변수는 `simulate_multiple` 함수 정의 또는 호출 부분에서 조정할 수 있습니다.
 3.  스크립트 실행:

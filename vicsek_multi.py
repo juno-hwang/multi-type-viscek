@@ -21,7 +21,7 @@ v = 0.03
 R = 1.0
 
 @ti.data_oriented
-class VicsekModelMultiple:
+class VicsekModelMultiType:
     def __init__(self, Ns: list[int], L: float, W: np.ndarray):
         Ns_list = Ns
         self.M = len(Ns_list)
@@ -134,7 +134,7 @@ def simulate_multiple(
 ):
     M = len(Ns)
     N = sum(Ns)
-    model = VicsekModelMultiple(Ns, L, W)
+    model = VicsekModelMultiType(Ns, L, W)
     model.init_particles()
 
     print(f"Warm-up for {warm_up_steps} steps...")
@@ -176,13 +176,12 @@ def simulate_multiple(
         gui.show()
 
 if __name__ == "__main__":
-    particle_counts_per_type = [1000, 1000, 1000]
+    particle_counts_per_type = [1000, 1000]
     interaction_matrix = np.array([
-        [1, 1, 1],
-        [-1, 1, 1],
-        [-1, -1, 1]
-    ], dtype=np.float32).T
-    noise_level = 1
+        [1, -1],
+        [-1, 1]
+    ], dtype=np.float32)
+    noise_level = 0.5
 
     simulate_multiple(
         Ns=particle_counts_per_type,
