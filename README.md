@@ -22,8 +22,10 @@
 - **업데이트 규칙:**
     1.  **각도 업데이트:** 다음 시간 단계 $t+1$에서 i-type의 $n$번째 입자의 각도는 반경 $R$ 내 이웃 입자들의 평균 각도(상호작용 행렬 $W$로 가중됨)에 무작위 노이즈 항을 더하여 결정됩니다.
         - 이웃 방향의 가중 합 계산:
-          $ S_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \sin(\theta_{mj}(t)) \cdot I(|x_{mj}(t) - x_{ni}(t)| \le R) $
-          $ C_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \cos(\theta_{mj}(t)) \cdot I(|x_{mj}(t) - x_{ni}(t)| \le R) $
+
+          $$ S_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \sin(\theta_{mj}(t)) \cdot I(|x_{mj}(t) - x_{ni}(t)| \le R) $$
+          
+          $$ C_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \cos(\theta_{mj}(t)) \cdot I(|x_{mj}(t) - x_{ni}(t)| \le R) $$
           
         - $ \langle \theta_{ni}(t) \rangle = \operatorname{atan2}(S_{ni}, C_{ni}) $
           
