@@ -1,4 +1,4 @@
-# Multi-type Vicsek Model Simulation [(웹에서 실행)](https://juno-hwang.github.io/multi-type-viscek/simulate.html)
+# Multi-type Vicsek Model Simulation [(웹에서 실행)](https://juno-hwang.github.io/multi-type-vicsek/simulate.html)
 
 이 프로젝트는 Python (Taichi) 및 WebGL 시각화를 사용하여 여러 입자 유형을 갖는 Vicsek 모델을 시뮬레이션합니다.
 
@@ -38,7 +38,7 @@
 - **Order Parameter:** 
     $$\phi_i = \frac{1}{N_i} \left| \sum_{n=1}^{N_i} e^{i \theta_{ni}} \right| $$
 
-## WebGL 시뮬레이션 (`simulate.html`) [웹 브라우저에서 실행하기](https://juno-hwang.github.io/multi-type-viscek/simulate.html)
+## WebGL 시뮬레이션 (`simulate.html`) [웹 브라우저에서 실행하기](https://juno-hwang.github.io/multi-type-vicsek/simulate.html)
 
 `simulate.html`은 다중 유형 Vicsek 모델의 상호작용 가능한 브라우저 기반 시각화를 제공합니다. JavaScript와 WebGL 렌더링을 사용하여 동일한 핵심 로직을 구현하며, Python이나 Taichi 없이도 실시간 매개변수 조정 및 시각화가 가능합니다.
 
