@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Multi‑Type Vicsek Simulator (WebGL)</title>
+  <style>
+    html,body{margin:0;padding:0;overflow:hidden;background:#fff;color:#000;font-family:system-ui,sans-serif}
+    #gui-container{position:fixed;top:0;right:0;z-index:10}
+  </style>
+</head>
+<body>
+  <canvas id="sim"></canvas>
+  <div id="gui-container"></div>
+
+  <!-- UI helper -->
+  <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7"></script>
+
+  <script type="module">
+    /******************** 1. GLOBAL / CONTEXT ********************/
+    const canvas = /** @type {HTMLCanvasElement} */(document.getElementById('sim'));
+    const gl = canvas.getContext('webgl2', { alpha:false, antialias:false });
+    if (!gl) throw new Error('WebGL2 not supported by this browser');
+
+    /******************** 1-A. INFO HUD ********************/
+    const info = document.createElement('div');
+    Object.assign(info.style, {
+      position:'fixed', top:'0', left:'0', padding:'4px 6px',
+      background:'rgba(255,255,255,0.75)', font:'12px monospace',
+      zIndex:11
+    });
+    document.body.appendChild(info);
+
+    let stepCount = 0;               // 시뮬레이션 스텝 카운터
+    let ordMag, cnt, sumX, sumY;     // 재사용 버퍼
+    let lastTime = performance.now();
+    let fps = 0;
+
+    // JS copy of the shader palette (for info text coloring)
+    const jsPalette = [
+      'rgb(220,0,0)',     // red (darker)
+      'rgb(0,200,0)',     // green (darker)
+      'rgb(0,0,200)',     // blue (darker)
+      'rgb(210,210,0)',   // yellow (darker)
+      'rgb(210,0,210)',   // magenta (darker)
+      'rgb(0,210,210)',   // cyan (darker)
+      'rgb(240,120,0)',   // orange (slightly darker)
+      'rgb(153,77,204)',  // purple
+      'rgb(140,140,140)', // gray
+      'rgb(51,204,77)'    // spring green
+    ];
+
+    function updateInfo() {
+      if (!ordMag || ordMag.length < M) {
+        ordMag = new Float32Array(M);
+        cnt    = new Int32Array(M);
+        sumX   = new Float32Array(M);
+        sumY   = new Float32Array(M);
+      }
+      ordMag.fill(0); cnt.fill(0); sumX.fill(0); sumY.fill(0);
+
+      for (let i=0;i<N;++i) {
+        const t = pType[i]|0;
+        sumX[t] += Math.cos(angle[i]);
+        sumY[t] += Math.sin(angle[i]);
+        cnt [t] ++;
+      }
+      let html = `step ${stepCount} | FPS: ${fps.toFixed(1)}<br>`; // Use <br> for line break
+      for (let t=0;t<M;++t) {
+        const mag = cnt[t] ? Math.hypot(sumX[t],sumY[t]) / cnt[t] : 0;
+        const color = jsPalette[t % jsPalette.length]; // Use palette color
+        html += `<span style="color:${color}">OP${t}: ${mag.toFixed(3)}</span><br>`; // Use <br> for line break
+      }
+      info.innerHTML = html; // Use innerHTML to render styled spans
+    }
+
+    /* =========== 2. SHADERS =========== */
+    const vsSource = `#version 300 es
+      precision mediump float;
+      layout(location=0) in vec2  aPos;       // position in [0,L]
+      layout(location=1) in float aType;      // particle type id
+      uniform float uL;                       // domain length (square)
+      uniform vec2  uScale;                   // aspect fix (letter‑box)
+      out float vType;
+      void main() {
+        vec2 ndc = (aPos / uL) * 2.0 - 1.0;   // -> [-1,1]
+        ndc *= uScale;                        // keep square aspect
+        gl_PointSize = 4.0;
+        gl_Position = vec4(ndc, 0.0, 1.0);
+        vType = aType;
+      }`;
+
+    const fsSource = `#version 300 es
+      precision mediump float;
+      in  float vType;
+      out vec4  outColor;
+      // R,G,B primary then distinct extras
+      vec3 palette[10] = vec3[10](
+        vec3(0.86,0.0,0.0),     // red (220/255)
+        vec3(0.0,0.78,0.0),     // green (200/255)
+        vec3(0.0,0.0,0.78),     // blue (200/255)
+        vec3(0.82,0.82,0.0),     // yellow (210/255)
+        vec3(0.82,0.0,0.82),     // magenta (210/255)
+        vec3(0.0,0.82,0.82),     // cyan (210/255)
+        vec3(0.94,0.47,0.0),     // orange (240/255, 120/255)
+        vec3(0.6,0.3,0.8),     // purple
+        vec3(0.55,0.55,0.55),  // gray
+        vec3(0.2,0.8,0.3)      // spring green
+      );
+      void main() {
+        int idx = int(vType);
+        vec3 col = palette[idx % 10]; // Use modulo for safety
+        float d = length(gl_PointCoord - 0.5);
+        float alpha = smoothstep(0.5, 0.45, d);
+        outColor = vec4(col, alpha);
+      }`;
+
+    // Helper : compile + link
+    function compileShader(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        throw new Error(gl.getShaderInfoLog(s));
+      }
+      return s;
+    }
+
+    const program = gl.createProgram();
+    gl.attachShader(program, compileShader(gl.VERTEX_SHADER, vsSource));
+    gl.attachShader(program, compileShader(gl.FRAGMENT_SHADER, fsSource));
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error(gl.getProgramInfoLog(program));
+    }
+    gl.useProgram(program);
+
+    const uLLoc    = gl.getUniformLocation(program, 'uL');
+    const uScaleLoc = gl.getUniformLocation(program, 'uScale');
+
+    /******************** 3. GUI / CONFIG ********************/
+    const cfg = {
+      L:  10.0,
+      v:  0.03,
+      R:  1.0,
+      eta:0.1,
+      typesText:'1000,1000',               // csv list of counts
+      Wtext:'[[1,-1],[-1,1]]',     // JSON matrix
+      reset: () => initSimulation()
+    };
+
+    const gui = new dat.GUI({ autoPlace:false, width: 320 });
+    document.getElementById('gui-container').appendChild(gui.domElement);
+    gui.add(cfg,'L', 5,30,0.5).name('Domain L');
+    gui.add(cfg,'v', 0.005,0.1,0.005).name('Speed v');
+    gui.add(cfg,'R', 0.2,3,0.1).name('Radius R');
+    gui.add(cfg,'eta',0,2,0.01).name('Noise η');
+    gui.add(cfg,'typesText').name('Counts (csv)').onFinishChange(cfg.reset);
+    gui.add(cfg,'Wtext').name('W matrix').onFinishChange(cfg.reset);
+    gui.add(cfg,'reset').name('Apply / Reset');
+
+    /******************** 4. SIMULATION STATE ********************/
+    let N, M;
+    let pos, angle, pType;// Float32 / Int32 buffers
+    let bufPos, bufType;  // WebGL buffers
+
+    // Uniform‑grid neighbourhood search data
+    let cellSize, gridDim, gridCnt;
+    let heads, links;     // Int32Array
+    let WFlat;            // interaction matrix flattened
+    let R2;               // radius squared (updates when R changes)
+
+    /* ---------- Initialise everything ---------- */
+    function initSimulation() {
+      // 1) parse W matrix
+      let Wjson;
+      try {
+        Wjson = JSON.parse(cfg.Wtext);
+      } catch(e) {
+        alert('Invalid JSON in W matrix');
+        return;
+      }
+      M = Wjson.length;
+      WFlat = new Float32Array(Wjson.flat());
+
+      // 2) parse type counts
+      const counts = cfg.typesText.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>!isNaN(n));
+      while (counts.length < M) counts.push(500);   // default if missing
+      const Ns = counts.slice(0,M);
+      N = Ns.reduce((a,b)=>a+b,0);
+
+      // 3) allocate arrays
+      pos   = new Float32Array(N*2);
+      angle = new Float32Array(N);
+      pType = new Float32Array(N);
+
+      let idx = 0;
+      for (let t=0;t<M;++t) {
+        for (let k=0;k<Ns[t];++k) {
+          pos[2*idx  ] = Math.random()*cfg.L;
+          pos[2*idx+1] = Math.random()*cfg.L;
+          angle[idx]   = (Math.random()*2-1)*Math.PI;
+          pType[idx]   = t;
+          ++idx;
+        }
+      }
+
+      // 4) uniform grid sizing
+      cellSize = cfg.R;
+      gridDim  = Math.ceil(cfg.L / cellSize);
+      gridCnt  = gridDim * gridDim;
+      heads = new Int32Array(gridCnt);
+      links = new Int32Array(N);
+      R2 = cfg.R * cfg.R;
+
+      // 5) (re)create WebGL buffers
+      if (bufPos) { gl.deleteBuffer(bufPos); gl.deleteBuffer(bufType); }
+      bufPos  = gl.createBuffer();
+      bufType = gl.createBuffer();
+
+      // positions (dynamic)
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufPos);
+      gl.bufferData(gl.ARRAY_BUFFER, pos, gl.DYNAMIC_DRAW);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(0);
+
+      // types (static)
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufType);
+      gl.bufferData(gl.ARRAY_BUFFER, pType, gl.STATIC_DRAW);
+      gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(1);
+
+      // uniforms
+      gl.uniform1f(uLLoc, cfg.L);
+      updateScale();
+      
+      // Reset step counter
+      stepCount = 0;
+    }
+
+    /******************** 5. UTILS ********************/
+    const mod = (x,m) => ((x%=m) < 0 ? x+m : x);
+    const wrapDist = (d,L) => (d >  L/2 ? d-L : (d < -L/2 ? d+L : d));
+
+    // We use growable typed arrays for accumulators
+    let sumSin = new Float32Array(1024);
+    let sumCos = new Float32Array(1024);
+    function ensureAccumulator() {
+      if (sumSin.length < N) {
+        sumSin = new Float32Array(N);
+        sumCos = new Float32Array(N);
+      }
+    }
+
+    function rebuildGrid() {
+      heads.fill(-1);
+      for (let i=0;i<N;++i) {
+        const gx = Math.floor(pos[2*i]   / cellSize);
+        const gy = Math.floor(pos[2*i+1] / cellSize);
+        const gi = gy*gridDim + gx;
+        links[i] = heads[gi];
+        heads[gi] = i;
+      }
+    }
+    const interaction = (a,b)=>WFlat[a*M+b];
+
+    function step() {
+      ensureAccumulator();
+      rebuildGrid();
+
+      // ---- accumulate influences ----
+      for (let i=0;i<N;++i) {
+        sumSin[i]=0; sumCos[i]=0;
+        const x = pos[2*i],   y = pos[2*i+1];
+        const gx = Math.floor(x/cellSize), gy = Math.floor(y/cellSize);
+        const ti = pType[i];
+        for (let oy=-1; oy<=1; ++oy) {
+          for (let ox=-1; ox<=1; ++ox) {
+            const nx = (gx+ox+gridDim)%gridDim;
+            const ny = (gy+oy+gridDim)%gridDim;
+            let h   = heads[ny*gridDim+nx];
+            while (h !== -1) {
+              const dx = wrapDist(pos[2*h]   - x, cfg.L);
+              const dy = wrapDist(pos[2*h+1] - y, cfg.L);
+              const d2 = dx*dx + dy*dy;
+              if (d2 <= R2) {
+                const w = interaction(ti, pType[h]);
+                sumSin[i] += w * Math.sin(angle[h]);
+                sumCos[i] += w * Math.cos(angle[h]);
+              }
+              h = links[h];
+            }
+          }
+        }
+      }
+
+      // ---- update angles & positions ----
+      for (let i=0;i<N;++i) {
+        let ang = angle[i];
+        if (sumSin[i] || sumCos[i]) {
+          ang = Math.atan2(sumSin[i], sumCos[i]);
+        }
+        ang += (Math.random()*2 - 1) * cfg.eta;
+        angle[i] = ang;
+        // move
+        pos[2*i  ] = mod(pos[2*i  ] + Math.cos(ang)*cfg.v, cfg.L);
+        pos[2*i+1] = mod(pos[2*i+1] + Math.sin(ang)*cfg.v, cfg.L);
+      }
+    }
+
+    /******************** 6. RENDER LOOP ********************/
+    gl.clearColor(1,1,1,1); // white background
+
+    function render() {
+      // Calculate FPS
+      const currentTime = performance.now();
+      const deltaTime = (currentTime - lastTime) / 1000; // in seconds
+      lastTime = currentTime;
+      const currentFps = 1 / deltaTime;
+      fps = fps * 0.9 + currentFps * 0.1; // Smooth FPS
+
+      step();
+      updateInfo();
+      stepCount++;
+      
+      // push positions to GPU
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufPos);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, pos);
+
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.POINTS, 0, N);
+      requestAnimationFrame(render);
+    }
+
+    /******************** 7. RESIZE HANDLING ********************/
+    function updateScale() {
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = window.innerWidth;
+      const cssH = window.innerHeight;
+      const w = cssW * dpr;
+      const h = cssH * dpr;
+      canvas.width  = w;
+      canvas.height = h;
+      canvas.style.width  = cssW + 'px';
+      canvas.style.height = cssH + 'px';
+
+      const aspect = w / h;
+      if (aspect >= 1) {
+        // wider: compress x so visible domain stays square
+        gl.uniform2f(uScaleLoc, h / w, 1.0);
+      } else {
+        // taller: compress y
+        gl.uniform2f(uScaleLoc, 1.0, w / h);
+      }
+      gl.viewport(0, 0, w, h);
+    }
+    window.addEventListener('resize', updateScale);
+
+    /******************** 8. BOOT ********************/
+    initSimulation();
+    updateScale();
+    requestAnimationFrame(render);
+
+  </script>
+</body>
+</html>
