@@ -43,7 +43,7 @@
 
 ## Python 시뮬레이션 (`vicsek_multi.py`)
 
-이 스크립트는 [Taichi 프로그래밍 언어](https://www.taichi-lang.org/)를 사용하여 GPU에서 시뮬레이션을 가속화합니다.
+이 스크립트는 [Taichi](https://www.taichi-lang.org/)를 사용하여 GPU에서 시뮬레이션을 가속화합니다.
 
 **사용법:**
 
