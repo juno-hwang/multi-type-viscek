@@ -24,7 +24,7 @@
         - $S_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \sin(\theta_{mj}(t)) \cdot I(|x_{mj}(t) - x_{ni}(t)| \le R)$
         - $C_{ni} = \sum_{j=1}^{M} \sum_{m=1}^{N_j} W_{ij} \cos(\theta_{mj}(t)) \cdot I(|x_{mj}(t) - x_{ni}(t)| \le R)$
           
-        - $\langle \theta_{ni}(t) \rangle = \operatorname{atan2}(S_{ni}, C_{ni})$
+        - $\langle \theta_{ni}(t) \rangle = \tan ^{-1} (S_{ni}, C_{ni})$
           
         - 노이즈 추가:
 
